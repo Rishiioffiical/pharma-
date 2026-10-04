@@ -1,0 +1,6 @@
+{
+  "name": "PHARMAHUB",
+  "description": "Premium pharmacy student academic and collaboration platform with AI study tools, drug library, flashcards, quizzes, and community.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

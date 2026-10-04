@@ -1,0 +1,52 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Hexagonal Glow / Molecular Ring -->
+    <path
+        android:pathData="M54,26 L76,38 L76,70 L54,82 L32,70 L32,38 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#2600E5A3"
+        android:fillColor="#00000000" />
+
+    <!-- Orbital Atom Dots -->
+    <path
+        android:pathData="M54,26m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0"
+        android:fillColor="#00E5A3" />
+    <path
+        android:pathData="M76,70m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0"
+        android:fillColor="#38BDF8" />
+    <path
+        android:pathData="M32,70m-3.5,0a3.5,3.5 0 1,0 7,0a3.5,3.5 0 1,0 -7,0"
+        android:fillColor="#00E5A3" />
+
+    <!-- Tilted Pharmaceutical Capsule Body: Top Half (Emerald) -->
+    <path
+        android:pathData="M43,36 C49,30 59,30 65,36 L68,39 L53,54 L40,41 Z"
+        android:fillColor="#00E5A3" />
+
+    <!-- Tilted Pharmaceutical Capsule Body: Bottom Half (Electric Cyan) -->
+    <path
+        android:pathData="M53,54 L68,39 L71,42 C77,48 77,58 71,64 L62,73 C56,79 46,79 40,73 L37,70 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="53"
+                android:startY="54"
+                android:endX="71"
+                android:endY="73"
+                android:type="linear">
+                <item android:color="#00D2FF" android:offset="0.0" />
+                <item android:color="#00A3FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Center Medical Cross Silhouette with high contrast -->
+    <path
+        android:pathData="M52,44 L56,44 L56,49 L61,49 L61,53 L56,53 L56,58 L52,58 L52,53 L47,53 L47,49 L52,49 Z"
+        android:fillColor="#FFFFFF" />
+
+</vector>
