@@ -8,10 +8,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.MainAppShell
 import com.example.ui.viewmodel.PharmaHubViewModel
 import com.example.util.AppCheckManager
+import com.example.util.FirebaseInitializer
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FirebaseInitializer.ensureInitialized(applicationContext)
         AppCheckManager.initializeAppCheck(applicationContext)
         enableEdgeToEdge()
         setContent {

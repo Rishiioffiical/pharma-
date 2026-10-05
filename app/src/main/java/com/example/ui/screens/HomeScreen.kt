@@ -8,332 +8,234 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ResourceEntity
-import com.example.ui.components.*
-import com.example.ui.theme.LocalGlowColor
-import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.PharmaHubViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: PharmaHubViewModel,
-    onOpenSearch: () -> Unit,
+    onOpenNote: (ResourceEntity) -> Unit,
+    onOpenNotes: () -> Unit,
+    onOpenAiWithQuery: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val analytics by viewModel.studyAnalytics.collectAsState()
-    val resources by viewModel.allResources.collectAsState()
-    val highYieldResources = remember(resources) { resources.take(4) }
+    val allResources by viewModel.allResources.collectAsState()
+    val bookmarkedResources by viewModel.bookmarkedResources.collectAsState()
+    var searchInput by remember { mutableStateOf("") }
+
+    val quickAiQueries = listOf("Paracetamol", "Metformin", "Ibuprofen", "Amoxicillin", "Omeprazole", "Beta Blockers")
+
+    // Continue Reading: most recent bookmarked or first available note
+    val continueReadingNote = remember(bookmarkedResources, allResources) {
+        bookmarkedResources.firstOrNull() ?: allResources.firstOrNull()
+    }
+
+    // Featured Notes: first 3 high-yield notes
+    val featuredNotes = remember(allResources) {
+        allResources.take(3)
+    }
+
+    // Recent Notes: next 4 notes
+    val recentNotes = remember(allResources) {
+        allResources.drop(3).take(4).ifEmpty { allResources.take(4) }
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .testTag("home_screen_content"),
-        contentPadding = PaddingValues(bottom = 96.dp)
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // 1. Top Bar / Command Launcher
+        // 1. App Header: PHARMAHUB
         item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.secondary
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocalPharmacy,
-                            contentDescription = null,
-                            tint = Color.Black,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "PHARMAHUB",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 1.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                        Text(
-                            text = "Master Pharmacy",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        )
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IconButton(
-                        onClick = onOpenSearch,
-                        modifier = Modifier
-                            .testTag("search_action_button")
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    IconButton(
-                        onClick = { viewModel.navigateTo(AppScreen.AI_ASSISTANT) },
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "AI Study Assistant",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Futuristic Hero Section with 3D Rotating Capsule Canvas
-        item {
-            GlassmorphicCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-                    .testTag("hero_banner_card"),
-                elevation = 6,
-                borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-            ) {
-                // Interactive 3D Canvas
-                Capsule3DCanvas(
-                    modifier = Modifier.padding(bottom = 8.dp),
-                    primaryColor = MaterialTheme.colorScheme.primary,
-                    secondaryColor = MaterialTheme.colorScheme.secondary,
-                    accentColor = MaterialTheme.colorScheme.tertiary
-                )
-
-                Text(
-                    text = "LEARN BETTER.\nSTUDY SMARTER.",
-                    style = MaterialTheme.typography.displayLarge.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        letterSpacing = (-0.5).sp
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = "Your Pharmacy. Your Knowledge. Your Community. Everything you need to study, collaborate and grow as a pharmacy scholar.",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 20.sp
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Button(
-                        onClick = { viewModel.navigateTo(AppScreen.RESOURCES) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("explore_resources_hero_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LibraryBooks,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Explore Resources",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = { viewModel.navigateTo(AppScreen.FLASHCARDS) },
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("start_studying_hero_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Style,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Start Studying",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.LocalPharmacy,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
-            }
-        }
-
-        // 3. Personalized Greeting & Live Academic Stats
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Good Morning, Rishi 👋",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "PHARMAHUB",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.2.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     )
-                )
-                Text(
-                    text = "Ready to master Pharmacology today?",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontStyle = FontStyle.Italic,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatBadge(
-                        icon = Icons.Default.LocalFireDepartment,
-                        value = "${analytics?.streakDays ?: 8} Days",
-                        label = "Study Streak",
-                        color = Color(0xFFF59E0B),
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatBadge(
-                        icon = Icons.Default.Bolt,
-                        value = "${analytics?.xpEarned ?: 1850} XP",
-                        label = "Level ${analytics?.userLevel ?: 6}",
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatBadge(
-                        icon = Icons.Default.Verified,
-                        value = "${analytics?.quizAccuracyPercent ?: 86}%",
-                        label = "Quiz Accuracy",
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.weight(1f)
+                    Text(
+                        text = "Academic Pharmacy Notes & AI Drug Platform",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
             }
         }
 
-        // 4. Quick Action Hub (Horizontal Scroll Cards)
+        // 2. Search Notes / Drugs
         item {
-            Column(modifier = Modifier.padding(top = 10.dp)) {
-                PharmaSectionHeader(
-                    title = "Academic Workspace",
-                    subtitle = "Jump into active pharmacy modules",
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
-
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    val modules = listOf(
-                        Triple("Drug Library", Icons.Default.Medication, AppScreen.DRUG_LIBRARY),
-                        Triple("Quiz Engine", Icons.Default.Quiz, AppScreen.QUIZ),
-                        Triple("Flashcards", Icons.Default.Style, AppScreen.FLASHCARDS),
-                        Triple("Study Groups", Icons.Default.Forum, AppScreen.CHAT),
-                        Triple("Community", Icons.Default.Groups, AppScreen.COMMUNITY),
-                        Triple("AI Tutor", Icons.Default.AutoAwesome, AppScreen.AI_ASSISTANT)
-                    )
-
-                    items(modules) { (name, icon, targetScreen) ->
-                        Surface(
-                            modifier = Modifier
-                                .width(120.dp)
-                                .clickable { viewModel.navigateTo(targetScreen) },
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                            )
+            OutlinedTextField(
+                value = searchInput,
+                onValueChange = { searchInput = it },
+                placeholder = { Text("Search notes, subjects, or drugs (e.g. Metformin)...") },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Default.Search, contentDescription = "Search")
+                },
+                trailingIcon = {
+                    if (searchInput.isNotBlank()) {
+                        IconButton(onClick = { searchInput = "" }) {
+                            Icon(imageVector = Icons.Default.Clear, contentDescription = "Clear")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    if (searchInput.isNotBlank()) {
+                        val clean = searchInput.trim().lowercase()
+                        if (clean.contains("paracet") || clean.contains("metform") || clean.contains("ibup") ||
+                            clean.contains("amox") || clean.contains("omep") || clean.contains("aspirin") ||
+                            clean.contains("drug") || clean.contains("mechanism")
                         ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                horizontalAlignment = Alignment.Start
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.primaryContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
+                            onOpenAiWithQuery(searchInput.trim())
+                        } else {
+                            viewModel.noteSearchQuery.value = searchInput.trim()
+                            onOpenNotes()
+                        }
+                    }
+                }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("home_search_input")
+            )
+        }
+
+        // 3. Quick AI Search Chips
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Quick AI Search",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(quickAiQueries) { drugName ->
+                        SuggestionChip(
+                            onClick = { onOpenAiWithQuery(drugName) },
+                            label = { Text(drugName, fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. Continue Reading
+        continueReadingNote?.let { note ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Continue Reading",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Card(
+                        onClick = { onOpenNote(note) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_continue_reading_card")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = note.title,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${note.subject} • Semester ${note.semester}",
+                                    style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = { onOpenNote(note) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Open", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -341,235 +243,130 @@ fun HomeScreen(
             }
         }
 
-        // 5. Weekly Study Analytics & Diagnostic Focus Area
-        item {
-            GlassmorphicCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp)
-            ) {
+        // 5. Featured Notes
+        if (featuredNotes.isNotEmpty()) {
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "Weekly Study Hours",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "42.0 total hours logged this week",
-                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = "+18% vs last week",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
+                    Text(
+                        text = "Featured Notes",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                    TextButton(onClick = onOpenNotes) {
+                        Text("View all", fontSize = 12.sp)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-                StudyHoursWeeklyChart()
-
-                Spacer(modifier = Modifier.height(14.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.WarningAmber,
-                        contentDescription = null,
-                        tint = Color(0xFFF59E0B),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Diagnostic Weak Area Detected",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    featuredNotes.forEach { note ->
+                        NoteListItem(
+                            note = note,
+                            onOpen = { onOpenNote(note) },
+                            onBookmarkToggle = { viewModel.toggleResourceBookmark(note) }
                         )
-                        Text(
-                            text = analytics?.weakArea ?: "Pharmacokinetics (Clearance & Vd)",
-                            style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        )
-                    }
-                    TextButton(onClick = { viewModel.navigateTo(AppScreen.FLASHCARDS) }) {
-                        Text("Revise Now", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
 
-        // 6. Exam Countdown Banner
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-            ) {
+        // 6. Recent Notes
+        if (recentNotes.isNotEmpty()) {
+            item {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Event,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(26.dp)
+                    Text(
+                        text = "Recent Notes",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "GPAT 2026 Examination",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "Target Score: 320+ • 148 Days Remaining",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        )
+                    TextButton(onClick = onOpenNotes) {
+                        Text("Browse", fontSize = 12.sp)
                     }
-                    Button(
-                        onClick = { viewModel.navigateTo(AppScreen.QUIZ) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text("Mock Test", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary))
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    recentNotes.forEach { note ->
+                        NoteListItem(
+                            note = note,
+                            onOpen = { onOpenNote(note) },
+                            onBookmarkToggle = { viewModel.toggleResourceBookmark(note) }
+                        )
                     }
                 }
             }
-        }
-
-        // 7. Recommended High-Yield Resources
-        item {
-            PharmaSectionHeader(
-                title = "High-Yield Resources",
-                subtitle = "Handpicked notes and solved papers",
-                actionText = "See All",
-                onActionClick = { viewModel.navigateTo(AppScreen.RESOURCES) },
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp)
-            )
-        }
-
-        items(highYieldResources) { res ->
-            ResourceItemRow(
-                resource = res,
-                onBookmarkClick = { viewModel.toggleResourceBookmark(res) },
-                onDownloadClick = { viewModel.recordDownload(res) },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
-            )
         }
     }
 }
 
 @Composable
-fun ResourceItemRow(
-    resource: ResourceEntity,
-    onBookmarkClick: () -> Unit,
-    onDownloadClick: () -> Unit,
+fun NoteListItem(
+    note: ResourceEntity,
+    onOpen: () -> Unit,
+    onBookmarkToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable { onDownloadClick() },
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    Card(
+        onClick = onOpen,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        when (resource.fileType) {
-                            "PDF" -> Color(0xFFEF4444).copy(alpha = 0.15f)
-                            "DOCX" -> Color(0xFF3B82F6).copy(alpha = 0.15f)
-                            else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        }
-                    ),
-                contentAlignment = Alignment.Center
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = when (note.fileType.uppercase()) {
+                    "PDF" -> Color(0xFFEF4444).copy(alpha = 0.12f)
+                    "PPTX" -> Color(0xFFF97316).copy(alpha = 0.12f)
+                    else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                }
             ) {
                 Text(
-                    text = resource.fileType,
+                    text = note.fileType.uppercase(),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        color = when (resource.fileType) {
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when (note.fileType.uppercase()) {
                             "PDF" -> Color(0xFFEF4444)
-                            "DOCX" -> Color(0xFF3B82F6)
+                            "PPTX" -> Color(0xFFF97316)
                             else -> MaterialTheme.colorScheme.primary
                         }
                     )
                 )
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
+            Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = resource.title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    text = note.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${resource.subject} • Sem ${resource.semester} • By ${resource.author}",
+                    text = "${note.subject} • Sem ${note.semester} • ${note.fileSize}",
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    )
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFF59E0B),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "${resource.rating} (${resource.reviewCount})",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "• ${resource.downloads} downloads",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    )
-                }
             }
-
-            IconButton(onClick = onBookmarkClick) {
+            IconButton(onClick = onBookmarkToggle) {
                 Icon(
-                    imageVector = if (resource.isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                    imageVector = if (note.isBookmarked) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
                     contentDescription = "Bookmark",
-                    tint = if (resource.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = if (note.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }

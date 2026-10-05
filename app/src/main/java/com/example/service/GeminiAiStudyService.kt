@@ -12,38 +12,96 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+enum class AiExplanationMode(val label: String) {
+    SIMPLE("Simple Explanation"),
+    DETAILED("Detailed Clinical"),
+    EXAM_MODE("Exam Mode (GPAT/NAPLEX)")
+}
+
 data class AiStudyResponse(
     val explanation: String,
     val keyPoints: List<String>,
     val highYieldCitations: List<String>,
-    val clinicalDisclaimer: String = "Educational information only. This platform does not diagnose, prescribe, or replace professional medical or pharmacotherapeutic advice."
+    val clinicalDisclaimer: String = "Educational pharmacology information only. This platform does not diagnose conditions, prescribe medications, or replace direct consultation with a qualified physician or pharmacist."
 )
 
 class GeminiAiStudyService {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
         .build()
 
-    suspend fun consultAiAssistant(prompt: String, contextSubject: String = "Pharmacology"): AiStudyResponse = withContext(Dispatchers.IO) {
+    suspend fun consultAiAssistant(
+        prompt: String,
+        contextSubject: String = "Pharmacology",
+        mode: AiExplanationMode = AiExplanationMode.DETAILED,
+        noteContentSnippet: String? = null
+    ): AiStudyResponse = withContext(Dispatchers.IO) {
+        val trimmedPrompt = prompt.trim()
+
+        // 1. Strict Medical Safety Refusal
+        val lower = trimmedPrompt.lowercase()
+        if (lower.contains("should i take") || lower.contains("can i take") ||
+            lower.contains("my disease") || lower.contains("diagnose me") ||
+            lower.contains("prescribe me") || lower.contains("my symptoms") ||
+            lower.contains("am i having an overdose")
+        ) {
+            return@withContext AiStudyResponse(
+                explanation = "SAFETY NOTICE: PharmaHub AI is an academic pharmacy education assistant and cannot determine personal treatment suitability, diagnose conditions, or prescribe medications. Please consult a qualified healthcare professional or emergency medical provider immediately regarding personal medical care.",
+                keyPoints = listOf(
+                    "This system is restricted to academic pharmaceutical education.",
+                    "Never initiate, stop, or adjust medication doses based on automated educational tools.",
+                    "Seek licensed medical consultation for personal health concerns."
+                ),
+                highYieldCitations = listOf(
+                    "World Health Organization (WHO) Guidelines for Safe Self-Medication",
+                    "US FDA Drug Safety Communication"
+                )
+            )
+        }
+
+        // 2. Build Academic System Prompt
+        val noteSection = if (!noteContentSnippet.isNullOrBlank()) {
+            "\nAcademic Note Reference Context:\n\"\"\"\n$noteContentSnippet\n\"\"\"\n(Answer the student using these specific verified note principles)\n"
+        } else ""
+
+        val modeGuidance = when (mode) {
+            AiExplanationMode.SIMPLE -> "Provide a straightforward, highly accessible explanation avoiding unnecessary jargon while remaining accurate."
+            AiExplanationMode.DETAILED -> "Provide deep clinical pharmacology insight, comprehensive biochemical pathways, and rigorous pharmacological explanations."
+            AiExplanationMode.EXAM_MODE -> "Emphasize high-yield GPAT, NIPER, and NAPLEX examination focus points, classic drug interaction questions, and essential memory pearls."
+        }
+
+        val fullPrompt = """
+            You are PharmaHub AI, an authoritative professor of clinical pharmacology and pharmacy education.
+            Subject Context: $contextSubject
+            Explanation Mode: ${mode.label}
+            $modeGuidance
+            $noteSection
+            
+            Student Question: "$trimmedPrompt"
+            
+            If this question concerns a specific drug, substance, or class, structure the response with these clear sections:
+            1. What is it?
+            2. Drug Class
+            3. Main Uses & Labeled Indications
+            4. Mechanism of Action
+            5. Pharmacokinetics (Absorption, Metabolism, Excretion, Half-life)
+            6. Common Adverse Effects
+            7. Important Boxed Warnings & Contraindications
+            8. Critical Drug-Drug Interactions
+            9. High-Yield Pharmacy / Exam Pearls
+            10. Authoritative Sources (e.g. PubChem, NLM RxNorm, DailyMed/FDA, CDSCO, Goodman & Gilman)
+            
+            If it is a broader pharmacy concept (e.g. tablet compression, SAR, biopharmaceutics), deliver structured numbered points with real textbook citations.
+            Maintain strict educational rigor. Never invent false facts.
+        """.trimIndent()
+
         val apiKey = BuildConfig.GEMINI_API_KEY
         val isKeyConfigured = apiKey.isNotBlank() && !apiKey.contains("MY_GEMINI_API_KEY")
 
         if (isKeyConfigured) {
             try {
-                val fullPrompt = """
-                    You are PharmaHub AI, an expert academic clinical pharmacology professor and pharmacy education tutor.
-                    Subject context: $contextSubject
-                    Student query: $prompt
-                    
-                    Format your response clearly with:
-                    1. Direct, high-yield academic explanation
-                    2. Bulleted key mechanisms / clinical pearls
-                    3. Standard textbook citations (e.g. Goodman & Gilman's Pharmacological Basis of Therapeutics, Lachman & Lieberman's Industrial Pharmacy, or Trease and Evans Pharmacognosy).
-                    Remember to maintain strict educational standards.
-                """.trimIndent()
-
                 val jsonBody = JSONObject().apply {
                     val contentsArray = JSONArray().apply {
                         val contentObj = JSONObject().apply {
@@ -77,139 +135,193 @@ class GeminiAiStudyService {
                         return@withContext parseAiResponse(text)
                     }
                 } else {
-                    Log.w("GeminiAi", "API returned code ${response.code}, falling back to curated academic engine.")
+                    Log.w("GeminiAi", "API code ${response.code}, utilizing local authoritative pharmacology knowledge engine.")
                 }
             } catch (e: Exception) {
-                Log.w("GeminiAi", "API request exception: ${e.message}, falling back to curated academic engine.")
+                Log.w("GeminiAi", "API call failed: ${e.message}, utilizing local authoritative pharmacology knowledge engine.")
             }
         }
 
-        // High-Yield Academic Fallback Engine with domain-specific pharmacy responses
-        return@withContext generateDomainPharmacyResponse(prompt, contextSubject)
+        // Local Authoritative Pharmacy Knowledge Fallback Engine
+        return@withContext generateLocalPharmacyResponse(trimmedPrompt, contextSubject, mode)
     }
 
     private fun parseAiResponse(rawText: String): AiStudyResponse {
         val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val bulletPoints = lines.filter { it.startsWith("•") || it.startsWith("-") || it.startsWith("*") }
             .map { it.removePrefix("•").removePrefix("-").removePrefix("*").trim() }
-        
+
+        val citations = lines.filter { it.contains("PubChem", ignoreCase = true) || it.contains("RxNorm", ignoreCase = true) || it.contains("FDA", ignoreCase = true) || it.contains("Goodman", ignoreCase = true) || it.contains("CDSCO", ignoreCase = true) }
+            .take(4)
+
         return AiStudyResponse(
             explanation = rawText,
             keyPoints = if (bulletPoints.isNotEmpty()) bulletPoints.take(5) else listOf(
-                "Verify receptor binding affinity and clearance mechanisms.",
-                "Review bioavailability differences across oral vs parenteral dosage forms.",
-                "Cross-check with clinical guidelines and drug interaction matrices."
+                "Review enzyme kinetics and competitive receptor antagonism.",
+                "Verify renal clearance formulas and active tubular secretion pathways.",
+                "Correlate lipophilicity (logP) with volume of distribution."
             ),
-            highYieldCitations = listOf(
+            highYieldCitations = if (citations.isNotEmpty()) citations else listOf(
                 "Goodman & Gilman's The Pharmacological Basis of Therapeutics (14th Ed.)",
-                "Rang & Dale's Pharmacology (9th Ed.)",
-                "USP-NF Compendial Standards & Monographs"
+                "NLM RxNorm & PubChem Open Substance Database",
+                "US FDA Approved Drug Products (Orange Book)"
             )
         )
     }
 
-    private fun generateDomainPharmacyResponse(prompt: String, contextSubject: String): AiStudyResponse {
-        val lower = prompt.lowercase()
+    private fun generateLocalPharmacyResponse(prompt: String, subject: String, mode: AiExplanationMode): AiStudyResponse {
+        val q = prompt.lowercase()
+
         return when {
-            lower.contains("bioavailability") || lower.contains("vd") || lower.contains("clearance") || lower.contains("pharmacokinetic") -> {
-                AiStudyResponse(
-                    explanation = """
-                        ### Pharmacokinetics Mastery: Bioavailability & Volume of Distribution
-                        
-                        **Bioavailability (F)** represents the fraction of an unchanged active pharmaceutical ingredient that reaches systemic circulation following administration.
-                        
-                        * Formula for absolute bioavailability:
-                          **F = (AUC_extravascular / AUC_intravenous) × (Dose_iv / Dose_po)**
-                        
-                        **Volume of Distribution (Vd)**:
-                        Apparent volume into which a drug must disperse to achieve plasma concentration:
-                        * **Vd = Total Amount of Drug in Body (Dose) / Initial Plasma Concentration (C0)**
-                        * High Vd (> 42 L) signifies extensive lipophilicity and tissue sequestration (e.g., Amiodarone, Chloroquine, Digoxin).
-                        * Low Vd (< 5 L) indicates the drug remains confined to vascular space due to large molecular size or high albumin binding (e.g., Warfarin, Heparin).
-                    """.trimIndent(),
-                    keyPoints = listOf(
-                        "IV administration by definition exhibits F = 1.0 (100% bioavailability).",
-                        "High hepatic first-pass extraction (ER > 0.7) drastically diminishes oral bioavailability.",
-                        "Total Clearance: Cl = Vd × Elimination Rate Constant (Kel).",
-                        "Steady-state plasma level (Css) is achieved after approximately 4 to 5 elimination half-lives."
-                    ),
-                    highYieldCitations = listOf(
-                        "Goodman & Gilman's Pharmacological Basis of Therapeutics, Chapter 2 (ADME)",
-                        "Applied Biopharmaceutics & Pharmacokinetics (Shargel & Yu, 8th Ed.)",
-                        "Lachman & Lieberman's Theory and Practice of Industrial Pharmacy"
-                    )
+            q.contains("metformin") -> AiStudyResponse(
+                explanation = """
+1. What is it?
+Metformin is the worldwide first-line oral antihyperglycemic medication prescribed for Type 2 Diabetes Mellitus.
+
+2. Drug Class:
+Biguanide derivative.
+
+3. Main Uses:
+• Type 2 Diabetes Mellitus (first-line monotherapy and in combination)
+• Off-label: Polycystic Ovary Syndrome (PCOS) insulin sensitization
+• Prevention of diabetes in high-risk prediabetic patients
+
+4. Mechanism of Action:
+Metformin enters hepatocytes via OCT1 transporters and activates AMP-activated protein kinase (AMPK). This inhibits mitochondrial respiratory chain Complex I, suppressing hepatic gluconeogenesis and glycogenolysis. It simultaneously enhances peripheral insulin sensitivity and skeletal muscle glucose uptake via GLUT4 translocation. It does NOT stimulate pancreatic beta-cell insulin secretion, carrying zero risk of hypoglycemia when used as monotherapy.
+
+5. Pharmacokinetics:
+• Absorption: 50-60% oral bioavailability under fasting conditions.
+• Distribution: Negligibly bound to plasma proteins.
+• Metabolism: Not metabolized by hepatic CYP enzymes.
+• Excretion: >90% eliminated unchanged in urine via glomerular filtration and OCT2-mediated tubular secretion.
+• Half-life: Plasma t½ is approximately 6.2 hours.
+
+6. Common Adverse Effects:
+• Gastrointestinal: Diarrhea, nausea, flatulence, abdominal pain (minimized by slow titration and taking with food).
+• Long-term: Decreased intestinal absorption of Vitamin B12.
+
+7. Important Boxed Warnings & Contraindications:
+• Boxed Warning: Lactic Acidosis (rare but potentially fatal).
+• Contraindications: Severe renal impairment (eGFR < 30 mL/min/1.73 m²), acute metabolic acidosis, severe hypoxemia, sepsis. Withhold prior to iodinated radiocontrast procedures.
+
+8. Critical Drug Interactions:
+• Iodinated Contrast Media: Risk of acute renal failure and metformin accumulation.
+• OCT2/MATE inhibitors (Cimetidine, Dolutegravir): Increases metformin plasma concentration.
+• Alcohol: Potentiates lactic acid elevation.
+
+9. High-Yield Pharmacy / Exam Pearls:
+• Unlike sulfonylureas, metformin is weight-neutral or promotes mild weight loss.
+• Vitamin B12 levels should be monitored every 2-3 years.
+• Does NOT cause hypoglycemia.
+
+10. Sources:
+• PubChem CID 4091
+• NLM RxNorm RXCUI 6809
+• US FDA DailyMed Metformin Monograph
+• Goodman & Gilman's Pharmacological Basis of Therapeutics (14th Ed.)
+                """.trimIndent(),
+                keyPoints = listOf(
+                    "AMPK activation reduces hepatic gluconeogenesis without hypoglycemia.",
+                    "Excreted 100% unchanged via kidneys; contraindicated if eGFR < 30 mL/min.",
+                    "Take with food to minimize common gastrointestinal side effects."
+                ),
+                highYieldCitations = listOf(
+                    "PubChem Compound CID 4091 (Metformin HCl)",
+                    "NLM RxNorm Concept RXCUI 6809",
+                    "American Diabetes Association (ADA) Standards of Care 2024"
                 )
-            }
-            lower.contains("beta") || lower.contains("antibiotic") || lower.contains("penicillin") || lower.contains("sar") -> {
-                AiStudyResponse(
-                    explanation = """
-                        ### Medicinal Chemistry: SAR of Beta-Lactam Antibacterials
-                        
-                        Beta-lactams (Penicillins, Cephalosporins, Carbapenems, Monobactams) target bacterial **Penicillin-Binding Proteins (PBPs)**, inhibiting transpeptidation during cell wall peptidoglycan synthesis.
-                        
-                        **Structure-Activity Relationship (SAR) Highlights:**
-                        1. **Strained 4-Membered Beta-Lactam Ring**: High ring tension is essential; nucleophilic attack by serine residue in PBP active site opens the ring, covalently inactivating the enzyme.
-                        2. **C-3 Free Carboxylic Acid**: Essential for ionic bonding with basic amino acids (Lys/Arg) in PBPs.
-                        3. **Acylamino Side Chain**: Modulates antibacterial spectrum and beta-lactamase stability (e.g., bulky side chains in Methicillin prevent beta-lactamase steric fit).
-                    """.trimIndent(),
-                    keyPoints = listOf(
-                        "Clavulanic acid and Tazobactam act as 'suicide inhibitors' of beta-lactamase.",
-                        "Cephalosporins possess a 6-membered dihydrothiazine ring instead of thiazolidine.",
-                        "Allergenic hapten formation results from reactive penicilloyl-protein conjugates."
-                    ),
-                    highYieldCitations = listOf(
-                        "Foye's Principles of Medicinal Chemistry (8th Ed., Chapter 33)",
-                        "Wilson and Gisvold's Textbook of Organic Medicinal and Pharmaceutical Chemistry",
-                        "Katzung's Basic & Clinical Pharmacology (15th Ed.)"
-                    )
+            )
+
+            q.contains("paracetamol") || q.contains("acetaminophen") -> AiStudyResponse(
+                explanation = """
+1. What is it?
+Paracetamol (Acetaminophen) is the premier worldwide non-opioid analgesic and antipyretic.
+
+2. Drug Class:
+Para-aminophenol derivative.
+
+3. Main Uses:
+• Mild to moderate pain (headache, toothache, musculoskeletal pain, dysmenorrhea)
+• Pyrexia (fever) in pediatrics and adults
+• Initial pharmacological step in mild osteoarthritis
+
+4. Mechanism of Action:
+Inhibits prostaglandin synthesis centrally by inhibiting the peroxidase step of the COX enzyme (often designated COX-3 / CNS-selective COX) in high-peroxide-deficient environments like the brain. Also active via the descending serotonergic inhibitory pain pathways and cannabinoid receptors via AM404 metabolite. It lacks peripheral anti-inflammatory action because peripheral tissue peroxides inactivate its inhibitory action.
+
+5. Pharmacokinetics:
+• Absorption: Rapid and near-complete oral absorption; peak in 30-60 min.
+• Distribution: Low plasma protein binding (10-25%).
+• Metabolism: 90-95% hepatic glucuronidation and sulfation. 5-10% oxidized by CYP2E1 into reactive N-acetyl-p-benzoquinone imine (NAPQI).
+• Excretion: Renal excretion of conjugates.
+• Half-life: 2 to 3 hours.
+
+6. Common Adverse Effects:
+Generally well tolerated at therapeutic doses; rare skin reactions.
+
+7. Important Boxed Warnings & Contraindications:
+• Boxed Warning: Severe hepatotoxicity and acute liver failure with doses exceeding 4,000 mg/day (or 3,000 mg/day in chronic alcoholism/liver impairment).
+• Antidote: Intravenous or oral N-acetylcysteine (NAC) within 8-10 hours restores glutathione reserves.
+
+8. Critical Drug Interactions:
+• Warfarin: Chronic high doses increase INR.
+• CYP2E1 inducers (Rifampin, Isoniazid, chronic alcohol): Markedly increase toxic NAPQI production.
+
+9. High-Yield Pharmacy / Exam Pearls:
+• Analgesic and antipyretic of choice in pregnancy (Category B/A) and in children with viral fevers (no risk of Reye's syndrome, unlike aspirin).
+• Toxic metabolite is NAPQI, treated with NAC.
+
+10. Sources:
+• PubChem CID 1983
+• NLM RxNorm RXCUI 161
+• CDSCO Indian Pharmacopoeia / National Formulary
+• Goodman & Gilman's Pharmacological Basis of Therapeutics (14th Ed.)
+                """.trimIndent(),
+                keyPoints = listOf(
+                    "Central COX peroxidase inhibition without peripheral anti-inflammatory properties.",
+                    "Safe in pediatrics and pregnancy; no Reye's syndrome risk.",
+                    "Toxic dose produces NAPQI hepatotoxin; antidote is N-acetylcysteine."
+                ),
+                highYieldCitations = listOf(
+                    "PubChem CID 1983",
+                    "NLM RxNorm RXCUI 161 (Acetaminophen)",
+                    "Goodman & Gilman (14th Ed.)"
                 )
-            }
-            lower.contains("quiz") || lower.contains("test") || lower.contains("question") -> {
-                AiStudyResponse(
-                    explanation = """
-                        ### High-Yield Pharmacy Exam Question & Rationales
-                        
-                        **Question:** A patient on long-term Digoxin therapy develops hypokalemia after starting a loop diuretic. Why is the risk of digitalis toxicity drastically elevated?
-                        
-                        **High-Yield Rationale:**
-                        Digoxin and K+ ions compete for the same extracellular binding site on the myocardial **Na+/K+ ATPase pump**. When serum K+ levels fall (hypokalemia), more Na+/K+ ATPase binding sites become unoccupied and accessible to Digoxin, magnifying digitalis toxicity even at normal therapeutic serum concentrations.
-                    """.trimIndent(),
-                    keyPoints = listOf(
-                        "Therapeutic serum Digoxin range is narrow: 0.5 to 0.9 ng/mL.",
-                        "Digitalis toxicity antidote: Digoxin-specific Fab antibody fragments (DigiFab).",
-                        "Classic ECG signs: Sagging ST depression ('Salvador Dali mustache'), inverted T waves, arrhythmias."
-                    ),
-                    highYieldCitations = listOf(
-                        "Katzung's Clinical Pharmacology, Chapter 13: Drugs Used in Heart Failure",
-                        "Pharmacotherapy: A Pathophysiologic Approach (DiPiro, 12th Ed.)",
-                        "British National Formulary (BNF 86)"
-                    )
+            )
+
+            else -> AiStudyResponse(
+                explanation = """
+1. What is it?
+Academic analysis for: "$prompt" in $subject.
+
+2. Core Pharmacological Principles:
+• Molecular Target: Review receptor affinity (Ki/Kd values), second messenger cascades (cAMP, IP3/DAG), or enzyme kinetic mechanisms (competitive vs non-competitive inhibition).
+• Curricular Concept: Ensure distinction between therapeutic index (TD50/ED50) and margin of safety.
+
+3. Pharmacokinetics & ADME Considerations:
+• Bioavailability (F): Dependent on first-pass hepatic metabolism and gut wall P-glycoprotein efflux.
+• Volume of Distribution (Vd): Lipophilic drugs partition extensively into adipose compartments, yielding Vd > total body water.
+• Clearance (CL): Rate of drug elimination divided by plasma concentration (CL = k * Vd).
+
+4. High-Yield Pharmacy Examination Pearls:
+• Check renal vs hepatic clearance pathways when evaluating dose modifications.
+• Distinguish pharmacokinetic interactions (CYP450 induction/inhibition) from pharmacodynamic interactions (synergy/antagonism).
+
+5. Authoritative References:
+• Goodman & Gilman's The Pharmacological Basis of Therapeutics (14th Ed.)
+• Rang & Dale's Pharmacology (9th Ed.)
+• PubChem & NLM RxNorm Database
+                """.trimIndent(),
+                keyPoints = listOf(
+                    "Correlate physiological mechanism with therapeutic response.",
+                    "Identify narrow therapeutic index agents requiring TDM.",
+                    "Evaluate CYP450 enzyme kinetics for drug-drug interactions."
+                ),
+                highYieldCitations = listOf(
+                    "Goodman & Gilman's Pharmacological Basis of Therapeutics",
+                    "NLM RxNorm Database",
+                    "US Pharmacopeia (USP-NF)"
                 )
-            }
-            else -> {
-                AiStudyResponse(
-                    explanation = """
-                        ### Academic Pharmacy Study Consultation: $contextSubject
-                        
-                        Regarding your inquiry: **"$prompt"**
-                        
-                        In professional pharmaceutical sciences, comprehensive understanding requires synthesizing:
-                        1. **Physicochemical Properties**: pKa, partition coefficient (LogP), solubility, and salt forms.
-                        2. **Pharmacodynamics**: Receptor affinity, intrinsic activity, signal transduction, and dose-response curve steepness.
-                        3. **Clinical Pharmacotherapeutics**: Individualized dosing, renal/hepatic impairment adjustments, and adverse drug reaction profiles.
-                    """.trimIndent(),
-                    keyPoints = listOf(
-                        "Correlate theoretical mechanisms with clinical drug-drug interactions.",
-                        "Review therapeutic drug monitoring (TDM) guidelines for narrow therapeutic index (NTI) drugs.",
-                        "Utilize spaced repetition to solidify drug classifications and contraindications."
-                    ),
-                    highYieldCitations = listOf(
-                        "Goodman & Gilman's Pharmacological Basis of Therapeutics (14th Ed.)",
-                        "Martindale: The Complete Drug Reference (39th Ed.)",
-                        "Remington: The Science and Practice of Pharmacy (23rd Ed.)"
-                    )
-                )
-            }
+            )
         }
     }
 }

@@ -57,6 +57,19 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
     val repository: PharmaHubRepository
     val pharmaceuticalDrugRepository: com.example.data.repository.PharmaceuticalDrugRepository
     private val aiService = GeminiAiStudyService()
+    val drugRetrievalService = com.example.service.DrugRetrievalService()
+    val authRepository = com.example.data.repository.AuthRepository(application)
+    val firestoreRepository = com.example.data.repository.FirestorePharmaRepository(application)
+
+    // Note Search and Filtering
+    val noteSearchQuery = MutableStateFlow("")
+    val selectedNoteCategory = MutableStateFlow("All")
+
+    // Drug Assistant & Structured Profile
+    val selectedDrugProfile = MutableStateFlow<com.example.service.DetailedDrugProfile?>(null)
+    val isDrugResolving = MutableStateFlow(false)
+    val drugResolutionError = MutableStateFlow<String?>(null)
+    val aiMode = MutableStateFlow(com.example.service.AiExplanationMode.DETAILED)
 
     init {
         val db = PharmaHubDatabase.getInstance(application)
@@ -584,7 +597,58 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
         sendAiPrompt(prompt, lastSubjectContext)
     }
 
-    fun sendAiPrompt(prompt: String, subjectContext: String = "Pharmacology") {
+    fun setAiMode(mode: com.example.service.AiExplanationMode) {
+        aiMode.value = mode
+    }
+
+    fun searchAndResolveDrug(query: String) {
+        if (query.isBlank()) return
+        viewModelScope.launch {
+            isDrugResolving.value = true
+            drugResolutionError.value = null
+            try {
+                val profile = drugRetrievalService.resolveDrugConcept(query)
+                if (profile != null) {
+                    selectedDrugProfile.value = profile
+                } else {
+                    drugResolutionError.value = "No reliable drug record was found for '$query'. Try another generic or brand name."
+                }
+            } catch (e: Exception) {
+                drugResolutionError.value = "Drug identification error: ${e.message}"
+            } finally {
+                isDrugResolving.value = false
+            }
+        }
+    }
+
+    fun clearSelectedDrugProfile() {
+        selectedDrugProfile.value = null
+        drugResolutionError.value = null
+    }
+
+    fun askAiAboutNote(resource: ResourceEntity) {
+        navigateTo(AppScreen.AI_ASSISTANT)
+        val prompt = "Explain core pharmacological mechanisms and high-yield exam points for: ${resource.title} (${resource.subject})"
+        sendAiPrompt(prompt, subjectContext = resource.subject, noteSnippet = resource.description)
+    }
+
+    fun signInWithGoogle(context: android.content.Context) {
+        viewModelScope.launch {
+            authStatusMessage.value = "Initiating Google Sign-In..."
+            val result = authRepository.signInWithGoogle(context)
+            if (result.isSuccess) {
+                val user = result.getOrNull()
+                if (user != null) {
+                    repository.signIn(user.email ?: "student@university.edu")
+                    authStatusMessage.value = "Signed in as ${user.displayName ?: user.email}"
+                }
+            } else {
+                authStatusMessage.value = "Google Sign-In: ${result.exceptionOrNull()?.localizedMessage ?: "Cancelled"}"
+            }
+        }
+    }
+
+    fun sendAiPrompt(prompt: String, subjectContext: String = "Pharmacology", noteSnippet: String? = null) {
         if (prompt.isBlank() || isAiGenerating.value) return
 
         lastPrompt = prompt
@@ -601,7 +665,12 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             try {
-                val response: AiStudyResponse = aiService.consultAiAssistant(prompt, subjectContext)
+                val response: AiStudyResponse = aiService.consultAiAssistant(
+                    prompt = prompt,
+                    contextSubject = subjectContext,
+                    mode = aiMode.value,
+                    noteContentSnippet = noteSnippet
+                )
                 val assistantMsg = AiChatMessage(
                     id = "ai_${System.currentTimeMillis()}",
                     isUser = false,

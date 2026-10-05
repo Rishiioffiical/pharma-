@@ -177,6 +177,15 @@ fun DocumentViewerScreen(
                     }
                 },
                 actions = {
+                    // Ask AI about this note
+                    IconButton(onClick = { viewModel.askAiAboutNote(resource) }) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Ask AI about this note",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     // External App Opener
                     IconButton(onClick = {
                         try {

@@ -5,16 +5,18 @@ import android.util.Log
 import com.example.R
 import com.example.data.model.FirestoreResource
 import com.example.data.model.FirestoreUser
+import com.example.util.FirebaseInitializer
 import com.google.android.gms.tasks.Task
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -39,31 +41,37 @@ suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { cont ->
 
 /**
  * Cloud Firestore repository for storing and synchronizing academic resources and user profiles.
- * Adheres to zero-trust architecture, auth-gated access, and custom database resolution.
+ * Safe and resilient: never throws on initialization if cloud credentials are being configured.
  */
 class FirestorePharmaRepository(
-    private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = Firebase.auth
+    private val db: FirebaseFirestore? = null,
+    private val auth: FirebaseAuth? = null
 ) {
     /**
      * Secondary convenience constructor: resolves database ID from string resources.
      */
     constructor(context: Context) : this(
         resolveFirestoreInstance(context.applicationContext),
-        Firebase.auth
+        AuthRepository.resolveAuth(context.applicationContext)
     )
 
     companion object {
-        private fun resolveFirestoreInstance(appContext: Context): FirebaseFirestore {
-            val dbId = try {
-                appContext.getString(R.string.firestore_database_id)
-            } catch (_: Exception) {
-                "(default)"
-            }
-            return if (dbId.isNotBlank() && dbId != "(default)") {
-                FirebaseFirestore.getInstance(dbId)
-            } else {
-                FirebaseFirestore.getInstance()
+        private fun resolveFirestoreInstance(appContext: Context): FirebaseFirestore? {
+            FirebaseInitializer.ensureInitialized(appContext)
+            return try {
+                val dbId = try {
+                    appContext.getString(R.string.firestore_database_id)
+                } catch (_: Exception) {
+                    "(default)"
+                }
+                if (dbId.isNotBlank() && dbId != "(default)") {
+                    FirebaseFirestore.getInstance(FirebaseApp.getInstance(), dbId)
+                } else {
+                    FirebaseFirestore.getInstance()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "FirebaseFirestore instance not available: ${e.message}")
+                null
             }
         }
     }
@@ -72,7 +80,7 @@ class FirestorePharmaRepository(
      * Ensures an authenticated session is active before allowing write operations.
      */
     private fun requireUserId(): String {
-        return auth.currentUser?.uid ?: throw IllegalStateException("Operation requires an active authenticated session.")
+        return auth?.currentUser?.uid ?: throw IllegalStateException("Operation requires an active authenticated session.")
     }
 
     // =========================================================================
@@ -82,35 +90,35 @@ class FirestorePharmaRepository(
     /**
      * Real-time stream of the current user's profile document.
      */
-    fun getUserProfileFlow(userId: String): Flow<FirestoreUser?> = callbackFlow {
-        if (auth.currentUser == null) {
-            trySend(null)
-            close()
-            return@callbackFlow
-        }
+    fun getUserProfileFlow(userId: String): Flow<FirestoreUser?> {
+        val firestore = db ?: return flowOf(null)
+        if (auth?.currentUser == null) return flowOf(null)
 
-        val docRef = db.collection("users").document(userId)
-        val registration: ListenerRegistration = docRef.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                Log.e(TAG, "Error listening to user profile $userId", error)
-                close(error)
-                return@addSnapshotListener
+        return callbackFlow {
+            val docRef = firestore.collection("users").document(userId)
+            val registration: ListenerRegistration = docRef.addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to user profile $userId", error)
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val user = snapshot?.toObject(FirestoreUser::class.java)
+                trySend(user)
             }
-            val user = snapshot?.toObject(FirestoreUser::class.java)
-            trySend(user)
-        }
 
-        awaitClose { registration.remove() }
+            awaitClose { registration.remove() }
+        }
     }
 
     /**
      * Saves or updates a user profile document in Firestore.
      */
     suspend fun saveUserProfile(user: FirestoreUser): Result<Unit> {
+        val firestore = db ?: return Result.failure(IllegalStateException("Firestore is not available."))
         return try {
             val currentUid = requireUserId()
             val finalUser = if (user.id.isBlank()) user.copy(id = currentUid) else user
-            db.collection("users").document(finalUser.id).set(finalUser).awaitTask()
+            firestore.collection("users").document(finalUser.id).set(finalUser).awaitTask()
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save user profile", e)
@@ -122,8 +130,9 @@ class FirestorePharmaRepository(
      * One-time fetch of a user profile by ID.
      */
     suspend fun getUserProfile(userId: String): Result<FirestoreUser?> {
+        val firestore = db ?: return Result.failure(IllegalStateException("Firestore is not available."))
         return try {
-            val snapshot = db.collection("users").document(userId).get().awaitTask()
+            val snapshot = firestore.collection("users").document(userId).get().awaitTask()
             val user = snapshot.toObject(FirestoreUser::class.java)
             Result.success(user)
         } catch (e: Exception) {
@@ -139,133 +148,88 @@ class FirestorePharmaRepository(
     /**
      * Real-time stream of all approved academic study resources.
      */
-    fun getApprovedResourcesFlow(): Flow<List<FirestoreResource>> = callbackFlow {
-        val query: Query = db.collection("resources")
-            .whereEqualTo("status", "APPROVED")
+    fun getApprovedResourcesFlow(): Flow<List<FirestoreResource>> {
+        val firestore = db ?: return flowOf(emptyList())
 
-        val registration: ListenerRegistration = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                Log.e(TAG, "Error listening to approved resources", error)
-                close(error)
-                return@addSnapshotListener
+        return callbackFlow {
+            val query: Query = firestore.collection("resources")
+                .whereEqualTo("status", "APPROVED")
+
+            val registration: ListenerRegistration = query.addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to approved resources", error)
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val items = snapshot?.documents?.mapNotNull { it.toObject(FirestoreResource::class.java) } ?: emptyList()
+                trySend(items)
             }
-            val items = snapshot?.documents?.mapNotNull { it.toObject(FirestoreResource::class.java) } ?: emptyList()
-            trySend(items)
-        }
 
-        awaitClose { registration.remove() }
+            awaitClose { registration.remove() }
+        }
     }
 
     /**
      * Real-time stream of resources uploaded by a specific student / user.
      */
-    fun getUserSubmissionsFlow(userId: String): Flow<List<FirestoreResource>> = callbackFlow {
-        val query: Query = db.collection("resources")
-            .whereEqualTo("uploaderId", userId)
+    fun getUserResourcesFlow(uploaderId: String): Flow<List<FirestoreResource>> {
+        val firestore = db ?: return flowOf(emptyList())
 
-        val registration: ListenerRegistration = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                Log.e(TAG, "Error listening to user submissions for $userId", error)
-                close(error)
-                return@addSnapshotListener
+        return callbackFlow {
+            val query: Query = firestore.collection("resources")
+                .whereEqualTo("uploaderId", uploaderId)
+
+            val registration: ListenerRegistration = query.addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to user uploads $uploaderId", error)
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val items = snapshot?.documents?.mapNotNull { it.toObject(FirestoreResource::class.java) } ?: emptyList()
+                trySend(items)
             }
-            val items = snapshot?.documents?.mapNotNull { it.toObject(FirestoreResource::class.java) } ?: emptyList()
-            trySend(items)
-        }
 
-        awaitClose { registration.remove() }
+            awaitClose { registration.remove() }
+        }
     }
 
     /**
-     * Real-time stream of resources awaiting administrator/faculty review.
+     * Saves or updates a resource metadata document in Firestore.
      */
-    fun getPendingModerationResourcesFlow(): Flow<List<FirestoreResource>> = callbackFlow {
-        val query: Query = db.collection("resources")
-            .whereEqualTo("status", "PENDING_MODERATION")
-
-        val registration: ListenerRegistration = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                Log.e(TAG, "Error listening to pending moderation resources", error)
-                close(error)
-                return@addSnapshotListener
-            }
-            val items = snapshot?.documents?.mapNotNull { it.toObject(FirestoreResource::class.java) } ?: emptyList()
-            trySend(items)
-        }
-
-        awaitClose { registration.remove() }
-    }
-
-    /**
-     * Submits resource metadata to Firestore.
-     * Enforces that student uploads start with status = 'PENDING_MODERATION'.
-     */
-    suspend fun submitResource(
-        title: String,
-        subject: String,
-        semester: Int,
-        course: String,
-        fileType: String,
-        fileSize: String,
-        tags: String = "",
-        description: String = "",
-        downloadUrl: String = "",
-        storagePath: String = "",
-        initialStatus: String = "PENDING_MODERATION"
-    ): Result<FirestoreResource> {
+    suspend fun saveResource(resource: FirestoreResource): Result<FirestoreResource> {
+        val firestore = db ?: return Result.failure(IllegalStateException("Firestore is not available."))
         return try {
-            val uploaderId = requireUserId()
-            val uploaderEmail = auth.currentUser?.email.orEmpty()
-            val resourceId = "res_${UUID.randomUUID().toString().take(10)}"
-
-            val resource = FirestoreResource(
-                id = resourceId,
-                title = title.trim(),
-                subject = subject.trim(),
-                semester = semester,
-                course = course.trim(),
-                fileType = fileType.uppercase().trim(),
-                fileSize = fileSize.trim(),
-                tags = tags.trim(),
-                description = description.trim(),
-                downloadUrl = downloadUrl.trim(),
-                storagePath = storagePath.trim(),
-                status = initialStatus,
-                uploaderId = uploaderId,
-                uploaderEmail = uploaderEmail,
-                createdAt = System.currentTimeMillis()
+            val finalId = if (resource.id.isBlank()) "res_${UUID.randomUUID().toString().take(12)}" else resource.id
+            val finalResource = resource.copy(
+                id = finalId,
+                uploaderId = auth?.currentUser?.uid ?: resource.uploaderId
             )
-
-            db.collection("resources").document(resourceId).set(resource).awaitTask()
-            Log.d(TAG, "Resource metadata created successfully: $resourceId")
-            Result.success(resource)
+            firestore.collection("resources").document(finalId).set(finalResource).awaitTask()
+            Result.success(finalResource)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to submit resource metadata", e)
+            Log.e(TAG, "Failed to save resource", e)
             Result.failure(e)
         }
     }
 
     /**
-     * Updates moderation status (e.g. APPROVED or REJECTED) with optional notes.
+     * Updates an existing resource's moderation status and notes.
      */
     suspend fun updateResourceStatus(
         resourceId: String,
         newStatus: String,
-        moderatorNotes: String = "",
-        rejectionReason: String = ""
+        moderatorNotes: String = ""
     ): Result<Unit> {
+        val firestore = db ?: return Result.failure(IllegalStateException("Firestore is not available."))
         return try {
-            requireUserId()
             val updates = mapOf(
                 "status" to newStatus,
-                "moderatorNotes" to moderatorNotes,
-                "rejectionReason" to rejectionReason
+                "moderatorNotes" to moderatorNotes
             )
-            db.collection("resources").document(resourceId).update(updates).awaitTask()
-            Log.d(TAG, "Resource $resourceId status updated to $newStatus")
+            firestore.collection("resources").document(resourceId).update(updates).awaitTask()
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to update resource status", e)
+            Log.e(TAG, "Failed to update resource status $resourceId", e)
             Result.failure(e)
         }
     }
@@ -274,10 +238,9 @@ class FirestorePharmaRepository(
      * Deletes a resource document from Firestore.
      */
     suspend fun deleteResource(resourceId: String): Result<Unit> {
+        val firestore = db ?: return Result.failure(IllegalStateException("Firestore is not available."))
         return try {
-            requireUserId()
-            db.collection("resources").document(resourceId).delete().awaitTask()
-            Log.d(TAG, "Resource $resourceId deleted from Firestore")
+            firestore.collection("resources").document(resourceId).delete().awaitTask()
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete resource $resourceId", e)
