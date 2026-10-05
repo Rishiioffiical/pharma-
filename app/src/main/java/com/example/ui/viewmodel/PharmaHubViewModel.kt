@@ -27,7 +27,9 @@ enum class AppScreen(val title: String) {
     AI_ASSISTANT("AI Assistant"),
     ANALYTICS("Analytics"),
     ADMIN("Admin & Moderation"),
-    PROFILE("Profile")
+    PROFILE("Profile"),
+    AUTH("Authentication"),
+    DOCUMENT_VIEWER("Document Reader")
 }
 
 data class AiChatMessage(
@@ -58,7 +60,7 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         val db = PharmaHubDatabase.getInstance(application)
-        repository = PharmaHubRepository(db.dao())
+        repository = PharmaHubRepository(db.dao(), application)
         pharmaceuticalDrugRepository = com.example.data.repository.PharmaceuticalDrugRepository(db.pharmaceuticalDrugDao())
         viewModelScope.launch {
             repository.seedDatabaseIfEmpty()
@@ -110,8 +112,45 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
     val allResources: StateFlow<List<ResourceEntity>> = repository.allResources
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val approvedResources: StateFlow<List<ResourceEntity>> = repository.allApprovedResources
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pendingModerationResources: StateFlow<List<ResourceEntity>> = repository.pendingModerationResources
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val bookmarkedResources: StateFlow<List<ResourceEntity>> = repository.bookmarkedResources
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allUsers: StateFlow<List<UserEntity>> = repository.allUsers
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val currentUser: StateFlow<UserEntity?> = repository.currentUser
+
+    val allReports: StateFlow<List<ResourceReportEntity>> = repository.allReports
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val auditLogs: StateFlow<List<AuditLogEntity>> = repository.auditLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allDownloadTasks: StateFlow<List<DownloadTaskEntity>> = repository.allDownloadTasks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val completedDownloads: StateFlow<List<DownloadTaskEntity>> = repository.completedDownloads
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // In-App Document Viewer State
+    private val _openedResource = MutableStateFlow<ResourceEntity?>(null)
+    val openedResource: StateFlow<ResourceEntity?> = _openedResource.asStateFlow()
+
+    fun openDocument(resource: ResourceEntity) {
+        _openedResource.value = resource
+        navigateTo(AppScreen.DOCUMENT_VIEWER)
+    }
+
+    fun closeDocument() {
+        _openedResource.value = null
+        popBack()
+    }
 
     val allDrugs: StateFlow<List<DrugEntity>> = repository.getAllDrugs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -332,6 +371,125 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository.deleteResource(resourceId)
         }
+    }
+
+    fun updateResource(resource: ResourceEntity) {
+        viewModelScope.launch {
+            repository.updateResource(resource)
+        }
+    }
+
+    fun approveResource(resourceId: String, notes: String = "") {
+        viewModelScope.launch {
+            repository.approveResource(resourceId, notes)
+        }
+    }
+
+    fun rejectResource(resourceId: String, reason: String, notes: String = "") {
+        viewModelScope.launch {
+            repository.rejectResource(resourceId, reason, notes)
+        }
+    }
+
+    fun togglePublishStatus(resource: ResourceEntity) {
+        viewModelScope.launch {
+            repository.togglePublishStatus(resource.id, resource.status)
+        }
+    }
+
+    fun reportResource(resourceId: String, title: String, reason: ReportReason, details: String) {
+        viewModelScope.launch {
+            repository.reportResource(resourceId, title, reason, details)
+        }
+    }
+
+    fun resolveReport(reportId: String, status: ReportStatus, notes: String = "") {
+        viewModelScope.launch {
+            repository.resolveReport(reportId, status, notes)
+        }
+    }
+
+    // --- Authentication & RBAC Actions ---
+    val authStatusMessage = MutableStateFlow<String?>(null)
+
+    fun signIn(email: String, role: UserRole? = null) {
+        viewModelScope.launch {
+            val result = repository.signIn(email, role)
+            if (result.isFailure) {
+                authStatusMessage.value = result.exceptionOrNull()?.message
+            } else {
+                authStatusMessage.value = "Welcome back, ${result.getOrNull()?.displayName}!"
+            }
+        }
+    }
+
+    fun register(
+        name: String,
+        email: String,
+        course: String,
+        semester: Int,
+        university: String,
+        role: UserRole = UserRole.STUDENT
+    ) {
+        viewModelScope.launch {
+            val result = repository.register(name, email, course, semester, university, role)
+            if (result.isFailure) {
+                authStatusMessage.value = result.exceptionOrNull()?.message
+            } else {
+                authStatusMessage.value = "Account created successfully for ${name}!"
+            }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch {
+            repository.signOut()
+            authStatusMessage.value = "You have been signed out."
+        }
+    }
+
+    fun switchRole(role: UserRole) {
+        viewModelScope.launch {
+            repository.switchActiveUserRole(role)
+        }
+    }
+
+    fun updateUserRole(userId: String, newRole: UserRole) {
+        viewModelScope.launch {
+            repository.updateUserRole(userId, newRole)
+        }
+    }
+
+    fun updateUserStatus(userId: String, newStatus: UserAccountStatus) {
+        viewModelScope.launch {
+            repository.updateUserStatus(userId, newStatus)
+        }
+    }
+
+    fun deleteUser(userId: String) {
+        viewModelScope.launch {
+            repository.deleteUser(userId)
+        }
+    }
+
+    // --- Download Actions ---
+    fun startDownload(resource: ResourceEntity) {
+        repository.startDownload(resource)
+        viewModelScope.launch {
+            repository.recordDownload(resource.id)
+        }
+    }
+
+    fun pauseDownload(taskId: String) {
+        repository.pauseDownload(taskId)
+    }
+
+    fun cancelDownload(taskId: String) {
+        repository.cancelDownload(taskId)
+    }
+
+    fun deleteOfflineResource(resourceId: String) {
+        repository.deleteOfflineResource(resourceId)
     }
 
     // Drug Library Actions

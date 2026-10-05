@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -45,6 +46,7 @@ fun MainAppShell(
     val currentScreen by viewModel.currentScreen.collectAsState()
     val resources by viewModel.allResources.collectAsState()
     val drugs by viewModel.allDrugs.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
@@ -61,7 +63,7 @@ fun MainAppShell(
 
     val primaryNavItems = listOf(
         Pair(AppScreen.HOME, Icons.Default.Home to "Home"),
-        Pair(AppScreen.RESOURCES, Icons.Default.LibraryBooks to "Resources"),
+        Pair(AppScreen.RESOURCES, Icons.AutoMirrored.Filled.LibraryBooks to "Resources"),
         Pair(AppScreen.FLASHCARDS, Icons.Default.Style to "Cards"),
         Pair(AppScreen.QUIZ, Icons.Default.Quiz to "Quiz"),
         Pair(AppScreen.COMMUNITY, Icons.Default.Forum to "Community")
@@ -69,17 +71,18 @@ fun MainAppShell(
 
     val allDrawerItems = listOf(
         DrawerItem(AppScreen.HOME, "Home Dashboard", Icons.Default.Home),
-        DrawerItem(AppScreen.RESOURCES, "Academic Library", Icons.Default.LibraryBooks),
-        DrawerItem(AppScreen.SUBJECTS, "Subject Explorer", Icons.Default.MenuBook),
+        DrawerItem(AppScreen.RESOURCES, "Academic Library", Icons.AutoMirrored.Filled.LibraryBooks),
+        DrawerItem(AppScreen.SUBJECTS, "Subject Explorer", Icons.AutoMirrored.Filled.MenuBook),
         DrawerItem(AppScreen.EXPLORE, "Semester Catalog", Icons.Default.Layers),
         DrawerItem(AppScreen.FLASHCARDS, "Flashcards (SM-2)", Icons.Default.Style),
         DrawerItem(AppScreen.QUIZ, "Quiz & GPAT Mock", Icons.Default.Quiz),
         DrawerItem(AppScreen.COMMUNITY, "Academic Community", Icons.Default.Forum),
-        DrawerItem(AppScreen.CHAT, "Study Groups Chat", Icons.Default.Chat),
+        DrawerItem(AppScreen.CHAT, "Study Groups Chat", Icons.AutoMirrored.Filled.Chat),
         DrawerItem(AppScreen.DRUG_LIBRARY, "Drug Monographs", Icons.Default.Medication),
         DrawerItem(AppScreen.AI_ASSISTANT, "AI Study Tutor", Icons.Default.AutoAwesome, "AI"),
         DrawerItem(AppScreen.ANALYTICS, "Study Analytics", Icons.Default.Insights),
-        DrawerItem(AppScreen.ADMIN, "Admin & Moderation", Icons.Default.AdminPanelSettings),
+        DrawerItem(AppScreen.ADMIN, "Admin & Moderation", Icons.Default.AdminPanelSettings, if (currentUser?.role?.canAccessAdmin() == true) "ADMIN" else null),
+        DrawerItem(AppScreen.AUTH, "Account & Access", Icons.Default.AccountCircle, currentUser?.role?.displayName?.take(7)),
         DrawerItem(AppScreen.PROFILE, "Profile & Theme Engine", Icons.Default.Settings)
     )
 
@@ -232,6 +235,13 @@ fun MainAppShell(
                             IconButton(onClick = { isSearchPaletteOpen = true }) {
                                 Icon(imageVector = Icons.Default.Search, contentDescription = "Global Search")
                             }
+                            IconButton(onClick = { viewModel.navigateTo(AppScreen.AUTH) }) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = "User Account",
+                                    tint = if (currentUser != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                             IconButton(onClick = { viewModel.navigateTo(AppScreen.PROFILE) }) {
                                 Icon(imageVector = Icons.Default.Settings, contentDescription = "Settings & Theme")
                             }
@@ -298,6 +308,8 @@ fun MainAppShell(
                         AppScreen.ANALYTICS -> ProgressAnalyticsScreen(viewModel = viewModel)
                         AppScreen.ADMIN -> AdminModerationScreen(viewModel = viewModel)
                         AppScreen.PROFILE -> ProfileSettingsScreen(viewModel = viewModel)
+                        AppScreen.AUTH -> AuthScreen(viewModel = viewModel)
+                        AppScreen.DOCUMENT_VIEWER -> DocumentViewerScreen(viewModel = viewModel)
                     }
                 }
             }

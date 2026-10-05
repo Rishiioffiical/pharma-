@@ -54,7 +54,7 @@ class PharmaHubRepository(
             ?: UserEntity(
                 id = "usr_${UUID.randomUUID().toString().take(8)}",
                 email = email.trim().lowercase(),
-                displayName = email.substringBefore("@").replace(".", " ").capitalize(),
+                displayName = email.substringBefore("@").replace(".", " ").replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() },
                 role = role ?: UserRole.STUDENT,
                 status = UserAccountStatus.ACTIVE
             ).also { dao.insertUser(it) }
@@ -337,6 +337,39 @@ class PharmaHubRepository(
             targetType = "RESOURCE",
             result = "SUCCESS",
             details = "Resource permanently deleted by ${actor.displayName}"
+        )
+        return Result.success(Unit)
+    }
+
+    suspend fun updateResource(resource: ResourceEntity): Result<Unit> {
+        val actor = _currentUser.value
+        if (actor == null || !actor.role.canModerateContent()) {
+            return Result.failure(SecurityException("Unauthorized: Admin or Moderator permissions required to edit resources."))
+        }
+        dao.updateResource(resource)
+        logAudit(
+            action = "EDIT_RESOURCE",
+            targetId = resource.id,
+            targetType = "RESOURCE",
+            result = "SUCCESS",
+            details = "Updated resource '${resource.title}'"
+        )
+        return Result.success(Unit)
+    }
+
+    suspend fun togglePublishStatus(resourceId: String, currentStatus: ResourceStatus): Result<Unit> {
+        val actor = _currentUser.value
+        if (actor == null || !actor.role.canModerateContent()) {
+            return Result.failure(SecurityException("Unauthorized: Moderator permissions required."))
+        }
+        val newStatus = if (currentStatus == ResourceStatus.APPROVED) ResourceStatus.PENDING_REVIEW else ResourceStatus.APPROVED
+        dao.updateResourceStatus(resourceId, newStatus, "Status toggled by ${actor.displayName}")
+        logAudit(
+            action = if (newStatus == ResourceStatus.APPROVED) "PUBLISH_RESOURCE" else "UNPUBLISH_RESOURCE",
+            targetId = resourceId,
+            targetType = "RESOURCE",
+            result = "SUCCESS",
+            details = "Status changed to ${newStatus.name}"
         )
         return Result.success(Unit)
     }
