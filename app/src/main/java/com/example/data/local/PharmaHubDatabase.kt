@@ -8,21 +8,28 @@ import com.example.data.model.*
 
 @Database(
     entities = [
+        UserEntity::class,
         ResourceEntity::class,
         DrugEntity::class,
+        PharmaceuticalDrug::class,
         FlashcardDeckEntity::class,
         FlashcardEntity::class,
         QuizEntity::class,
         QuizQuestionEntity::class,
         CommunityPostEntity::class,
         ChatMessageEntity::class,
-        StudyAnalyticsEntity::class
+        StudyAnalyticsEntity::class,
+        ResourceReportEntity::class,
+        AuditLogEntity::class,
+        DownloadTaskEntity::class,
+        AppSystemSettingsEntity::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class PharmaHubDatabase : RoomDatabase() {
     abstract fun dao(): PharmaHubDao
+    abstract fun pharmaceuticalDrugDao(): PharmaceuticalDrugDao
 
     companion object {
         @Volatile
@@ -35,7 +42,7 @@ abstract class PharmaHubDatabase : RoomDatabase() {
                     PharmaHubDatabase::class.java,
                     "pharmahub_academic_db"
                 )
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance
                 instance

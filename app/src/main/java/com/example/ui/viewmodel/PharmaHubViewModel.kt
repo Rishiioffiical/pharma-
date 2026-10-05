@@ -52,14 +52,17 @@ data class ActiveQuizState(
 
 class PharmaHubViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: PharmaHubRepository
+    val repository: PharmaHubRepository
+    val pharmaceuticalDrugRepository: com.example.data.repository.PharmaceuticalDrugRepository
     private val aiService = GeminiAiStudyService()
 
     init {
         val db = PharmaHubDatabase.getInstance(application)
         repository = PharmaHubRepository(db.dao())
+        pharmaceuticalDrugRepository = com.example.data.repository.PharmaceuticalDrugRepository(db.pharmaceuticalDrugDao())
         viewModelScope.launch {
             repository.seedDatabaseIfEmpty()
+            pharmaceuticalDrugRepository.seedSampleDrugsIfEmpty()
         }
     }
 
@@ -104,13 +107,19 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
     var selectedSemester = MutableStateFlow(5)
 
     // Data Flows from Repository
-    val allResources: StateFlow<List<ResourceEntity>> = repository.getAllResources()
+    val allResources: StateFlow<List<ResourceEntity>> = repository.allResources
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val bookmarkedResources: StateFlow<List<ResourceEntity>> = repository.getBookmarkedResources()
+    val bookmarkedResources: StateFlow<List<ResourceEntity>> = repository.bookmarkedResources
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allDrugs: StateFlow<List<DrugEntity>> = repository.getAllDrugs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pharmaceuticalDrugs: StateFlow<List<com.example.data.model.PharmaceuticalDrug>> = pharmaceuticalDrugRepository.allDrugs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val favoritePharmaceuticalDrugs: StateFlow<List<com.example.data.model.PharmaceuticalDrug>> = pharmaceuticalDrugRepository.favoriteDrugs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val flashcardDecks: StateFlow<List<FlashcardDeckEntity>> = repository.getDecks()
@@ -329,6 +338,48 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
     fun toggleDrugBookmark(drug: DrugEntity) {
         viewModelScope.launch {
             repository.toggleDrugBookmark(drug.id, drug.isBookmarked)
+        }
+    }
+
+    fun addPharmaceuticalDrug(
+        name: String,
+        classification: String,
+        indications: String,
+        sideEffects: String,
+        genericName: String = "",
+        brandName: String = "",
+        contraindications: String = "",
+        mechanismOfAction: String = "",
+        dosage: String = "",
+        dosageForms: String = "",
+        precautions: String = ""
+    ) {
+        viewModelScope.launch {
+            pharmaceuticalDrugRepository.addDrug(
+                name = name,
+                classification = classification,
+                indications = indications,
+                sideEffects = sideEffects,
+                genericName = genericName,
+                brandName = brandName,
+                contraindications = contraindications,
+                mechanismOfAction = mechanismOfAction,
+                dosage = dosage,
+                dosageForms = dosageForms,
+                precautions = precautions
+            )
+        }
+    }
+
+    fun deletePharmaceuticalDrug(drugId: String) {
+        viewModelScope.launch {
+            pharmaceuticalDrugRepository.deleteDrugById(drugId)
+        }
+    }
+
+    fun togglePharmaceuticalDrugFavorite(drug: com.example.data.model.PharmaceuticalDrug) {
+        viewModelScope.launch {
+            pharmaceuticalDrugRepository.toggleFavorite(drug.id, drug.isFavorite)
         }
     }
 

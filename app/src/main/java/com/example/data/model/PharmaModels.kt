@@ -2,6 +2,226 @@ package com.example.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import java.util.UUID
+
+/**
+ * Platform User Roles following the principle of least privilege.
+ */
+enum class UserRole(val displayName: String, val level: Int) {
+    SUPER_ADMIN("Super Administrator", 100),
+    ADMIN("Platform Admin", 80),
+    CONTENT_ADMIN("Content Admin", 60),
+    MODERATOR("Academic Moderator", 50),
+    CONTRIBUTOR("Verified Educator / Contributor", 30),
+    PHARMACIST("Licensed Pharmacist", 20),
+    STUDENT("Pharmacy Student", 10),
+    GUEST("Guest Visitor", 0);
+
+    fun canAccessAdmin(): Boolean = this == SUPER_ADMIN || this == ADMIN || this == CONTENT_ADMIN || this == MODERATOR
+    fun canManageUsers(): Boolean = this == SUPER_ADMIN || this == ADMIN
+    fun canModerateContent(): Boolean = this == SUPER_ADMIN || this == ADMIN || this == CONTENT_ADMIN || this == MODERATOR
+    fun canPublishDirectly(): Boolean = this == SUPER_ADMIN || this == ADMIN || this == CONTENT_ADMIN
+    fun canViewAuditLogs(): Boolean = this == SUPER_ADMIN || this == ADMIN
+    fun canModifySystemSettings(): Boolean = this == SUPER_ADMIN
+}
+
+/**
+ * Account statuses for security and moderation.
+ */
+enum class UserAccountStatus(val displayName: String) {
+    ACTIVE("Active"),
+    PENDING_VERIFICATION("Pending Verification"),
+    SUSPENDED("Account Suspended"),
+    BANNED("Permanently Banned")
+}
+
+/**
+ * Authenticated User record.
+ */
+@Entity(tableName = "users")
+data class UserEntity(
+    @PrimaryKey val id: String,
+    val email: String,
+    val displayName: String,
+    val role: UserRole = UserRole.STUDENT,
+    val status: UserAccountStatus = UserAccountStatus.ACTIVE,
+    val university: String = "National College of Pharmacy",
+    val course: String = "B.Pharm",
+    val semester: Int = 5,
+    val isEmailVerified: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastLoginAt: Long = System.currentTimeMillis(),
+    val uploadCount: Int = 0,
+    val downloadCount: Int = 0,
+    val avatarUrl: String = ""
+)
+
+/**
+ * Lifecycle status of academic resources.
+ * User uploads are strictly PENDING_REVIEW until approved by an admin or moderator.
+ */
+enum class ResourceStatus(val displayName: String) {
+    PENDING_REVIEW("Pending Moderation"),
+    APPROVED("Approved & Published"),
+    REJECTED("Rejected"),
+    ARCHIVED("Archived")
+}
+
+@Entity(tableName = "resources")
+data class ResourceEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val subject: String,
+    val semester: Int,
+    val course: String = "B.Pharm",
+    val university: String,
+    val author: String,
+    val authorAvatarUrl: String = "",
+    val uploadDate: String,
+    val fileType: String, // PDF, DOCX, PPTX
+    val fileSize: String,
+    val fileSizeBytes: Long = 4194304L, // Default ~4MB
+    val tags: String, // Comma separated
+    val rating: Float = 5.0f,
+    val reviewCount: Int = 0,
+    val views: Int = 0,
+    val downloads: Int = 0,
+    val isBookmarked: Boolean = false,
+    val description: String = "",
+    val downloadUrl: String = "",
+    val storagePath: String = "",
+    val status: ResourceStatus = ResourceStatus.APPROVED,
+    val uploaderId: String = "sys_admin",
+    val uploaderEmail: String = "admin@pharmahub.edu",
+    val rejectionReason: String = "",
+    val moderatorNotes: String = "",
+    val copyrightLicense: String = "Educational Fair Use / CC-BY-NC 4.0",
+    val checksumSha256: String = "",
+    val isVerified: Boolean = true,
+    val reportCount: Int = 0,
+    val isLocalOfflineAvailable: Boolean = false,
+    val localFilePath: String = ""
+)
+
+/**
+ * Reasons why a student or faculty might report a resource.
+ */
+enum class ReportReason(val displayName: String) {
+    COPYRIGHT_INFRINGEMENT("Copyright or Licensing Infringement"),
+    INCORRECT_INFORMATION("Factually Incorrect / Dangerous Medical Info"),
+    MALWARE_OR_SUSPICIOUS("Malicious File or Suspicious Content"),
+    SPAM_OR_DUPLICATE("Spam or Duplicate Submission"),
+    INAPPROPRIATE_CONTENT("Inappropriate or Defamatory Content"),
+    WRONG_CATEGORY("Wrong Subject or Misleading Category"),
+    OTHER("Other Violation")
+}
+
+enum class ReportStatus(val displayName: String) {
+    OPEN("Open"),
+    UNDER_REVIEW("Under Review"),
+    RESOLVED("Resolved (Action Taken)"),
+    DISMISSED("Dismissed (False Report)")
+}
+
+@Entity(tableName = "resource_reports")
+data class ResourceReportEntity(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val resourceId: String,
+    val resourceTitle: String,
+    val reporterId: String,
+    val reporterEmail: String,
+    val reason: ReportReason,
+    val details: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val status: ReportStatus = ReportStatus.OPEN,
+    val resolutionNotes: String = "",
+    val resolvedBy: String = ""
+)
+
+/**
+ * Immutable security audit action log.
+ */
+@Entity(tableName = "audit_logs")
+data class AuditLogEntity(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val timestamp: Long = System.currentTimeMillis(),
+    val actorId: String,
+    val actorEmail: String,
+    val actorRole: String,
+    val action: String, // e.g., "APPROVE_RESOURCE", "REJECT_RESOURCE", "SUSPEND_USER", "LOGIN", "SETTINGS_UPDATE"
+    val targetId: String,
+    val targetType: String, // "RESOURCE", "USER", "REPORT", "SYSTEM"
+    val result: String = "SUCCESS", // "SUCCESS", "DENIED", "FAILED"
+    val details: String = ""
+)
+
+/**
+ * Status of background file downloads.
+ */
+enum class DownloadStatus(val displayName: String) {
+    IDLE("Idle"),
+    DOWNLOADING("Downloading"),
+    PAUSED("Paused"),
+    COMPLETED("Completed"),
+    FAILED("Failed"),
+    CANCELLED("Cancelled")
+}
+
+@Entity(tableName = "download_tasks")
+data class DownloadTaskEntity(
+    @PrimaryKey val id: String, // typically matches resourceId
+    val resourceId: String,
+    val resourceTitle: String,
+    val fileName: String,
+    val fileSizeBytes: Long,
+    val bytesDownloaded: Long = 0L,
+    val progressPercent: Int = 0,
+    val speedKbps: Float = 0f,
+    val status: DownloadStatus = DownloadStatus.IDLE,
+    val partFilePath: String = "",
+    val finalFilePath: String = "",
+    val checksum: String = "",
+    val errorMessage: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Platform system governance settings.
+ */
+@Entity(tableName = "system_settings")
+data class AppSystemSettingsEntity(
+    @PrimaryKey val id: String = "global_settings",
+    val maintenanceMode: Boolean = false,
+    val maintenanceNotice: String = "PharmaHub is undergoing scheduled infrastructure upgrades. Student services will resume shortly.",
+    val allowRegistration: Boolean = true,
+    val maxUploadSizeBytes: Long = 52428800L, // 50 MB
+    val allowedFileExtensions: String = "pdf,docx,pptx,txt",
+    val aiDailyLimitPerUser: Int = 40,
+    val aiServiceEnabled: Boolean = true,
+    val downloadsEnabled: Boolean = true
+)
+
+/**
+ * Entity representing a pharmaceutical drug in the local database library.
+ */
+@Entity(tableName = "pharmaceutical_drugs")
+data class PharmaceuticalDrug(
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val genericName: String = "",
+    val brandName: String = "",
+    val classification: String,
+    val indications: String,
+    val sideEffects: String,
+    val contraindications: String = "",
+    val mechanismOfAction: String = "",
+    val dosage: String = "",
+    val dosageForms: String = "",
+    val precautions: String = "",
+    val isFavorite: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
 
 /**
  * Course programs available in Pharmacy education.
@@ -48,31 +268,6 @@ enum class ReviewRating {
     EASY   // 5-7 days
 }
 
-@Entity(tableName = "resources")
-data class ResourceEntity(
-    @PrimaryKey val id: String,
-    val title: String,
-    val subject: String,
-    val semester: Int,
-    val course: String = "B.Pharm",
-    val university: String,
-    val author: String,
-    val authorAvatarUrl: String = "",
-    val uploadDate: String,
-    val fileType: String, // PDF, DOCX, PPTX
-    val fileSize: String,
-    val tags: String, // Comma separated
-    val rating: Float,
-    val reviewCount: Int,
-    val views: Int,
-    val downloads: Int,
-    val isBookmarked: Boolean = false,
-    val description: String = "",
-    val downloadUrl: String = "",
-    val isVerified: Boolean = true,
-    val reportCount: Int = 0
-)
-
 @Entity(tableName = "drugs")
 data class DrugEntity(
     @PrimaryKey val id: String,
@@ -91,7 +286,10 @@ data class DrugEntity(
     val halfLife: String = "4-6 hours",
     val highYieldGpatFacts: String = "",
     val isBookmarked: Boolean = false
-)
+) {
+    val classification: String get() = drugClass
+    val sideEffects: String get() = adverseEffects
+}
 
 @Entity(tableName = "flashcard_decks")
 data class FlashcardDeckEntity(
