@@ -7,10 +7,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.MainAppShell
 import com.example.ui.viewmodel.PharmaHubViewModel
+import com.example.util.AppCheckManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppCheckManager.initializeAppCheck(applicationContext)
         enableEdgeToEdge()
         setContent {
             val viewModel: PharmaHubViewModel = viewModel()
