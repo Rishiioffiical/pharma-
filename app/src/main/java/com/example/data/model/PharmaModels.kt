@@ -92,7 +92,7 @@ data class ResourceEntity(
     val storagePath: String = "",
     val status: ResourceStatus = ResourceStatus.APPROVED,
     val uploaderId: String = "sys_admin",
-    val uploaderEmail: String = "admin@pharmahub.edu",
+    val uploaderEmail: String = "",
     val rejectionReason: String = "",
     val moderatorNotes: String = "",
     val copyrightLicense: String = "Educational Fair Use / CC-BY-NC 4.0",

@@ -61,13 +61,15 @@ fun MainAppShell(
         }
     }
 
-    val primaryNavItems = listOf(
-        Pair(AppScreen.HOME, Icons.Default.Home to "Home"),
-        Pair(AppScreen.RESOURCES, Icons.AutoMirrored.Filled.LibraryBooks to "Resources"),
-        Pair(AppScreen.FLASHCARDS, Icons.Default.Style to "Cards"),
-        Pair(AppScreen.QUIZ, Icons.Default.Quiz to "Quiz"),
-        Pair(AppScreen.COMMUNITY, Icons.Default.Forum to "Community")
-    )
+    val primaryNavItems = buildList {
+        add(Pair(AppScreen.HOME, Icons.Default.Home to "Home"))
+        add(Pair(AppScreen.RESOURCES, Icons.AutoMirrored.Filled.LibraryBooks to "Resources"))
+        add(Pair(AppScreen.AI_ASSISTANT, Icons.Default.AutoAwesome to "AI Study"))
+        if (currentUser?.role?.canAccessAdmin() == true) {
+            add(Pair(AppScreen.ADMIN, Icons.Default.AdminPanelSettings to "Admin"))
+        }
+        add(Pair(AppScreen.AUTH, Icons.Default.AccountCircle to if (currentUser != null) "Account" else "Sign In"))
+    }
 
     val allDrawerItems = listOf(
         DrawerItem(AppScreen.HOME, "Home Dashboard", Icons.Default.Home),

@@ -553,135 +553,13 @@ object InitialPharmaData {
         recommendedTopic = "Renal Clearance and First-Pass Metabolism"
     )
 
-    val sampleUsers = listOf(
-        UserEntity(
-            id = "usr_superadmin",
-            email = "admin@pharmahub.edu",
-            displayName = "Dr. Vikram Seth (Dean)",
-            role = UserRole.SUPER_ADMIN,
-            status = UserAccountStatus.ACTIVE,
-            university = "Consortium of Pharmacy Universities",
-            course = "Administration",
-            semester = 8,
-            isEmailVerified = true,
-            uploadCount = 42,
-            downloadCount = 180
-        ),
-        UserEntity(
-            id = "usr_moderator",
-            email = "ananya.ray@pharmahub.edu",
-            displayName = "Dr. Ananya Ray",
-            role = UserRole.MODERATOR,
-            status = UserAccountStatus.ACTIVE,
-            university = "Bombay College of Pharmacy",
-            course = "M.Pharm Pharmacology",
-            semester = 4,
-            isEmailVerified = true,
-            uploadCount = 28,
-            downloadCount = 120
-        ),
-        UserEntity(
-            id = "usr_student_01",
-            email = "rishi.pandit@pharmahub.edu",
-            displayName = "Rishi Pandit",
-            role = UserRole.STUDENT,
-            status = UserAccountStatus.ACTIVE,
-            university = "National College of Pharmacy",
-            course = "Pharm.D",
-            semester = 5,
-            isEmailVerified = true,
-            uploadCount = 6,
-            downloadCount = 48
-        ),
-        UserEntity(
-            id = "usr_contributor_01",
-            email = "arvind.sharma@pharmahub.edu",
-            displayName = "Prof. Arvind Sharma",
-            role = UserRole.CONTRIBUTOR,
-            status = UserAccountStatus.ACTIVE,
-            university = "NIPER",
-            course = "B.Pharm / M.Pharm",
-            semester = 6,
-            isEmailVerified = true,
-            uploadCount = 18,
-            downloadCount = 95
-        )
-    )
+    val sampleUsers = emptyList<UserEntity>()
 
-    val samplePendingResources = listOf(
-        ResourceEntity(
-            id = "res_pending_01",
-            title = "Pharmaceutical Microbiology: Autoclave Validation & Sterility Testing",
-            subject = "Microbiology",
-            semester = 3,
-            course = "B.Pharm",
-            university = "Manipal College of Pharmaceutical Sciences",
-            author = "Sneha Kulkarni",
-            uploadDate = "10 mins ago",
-            fileType = "PDF",
-            fileSize = "3.4 MB",
-            fileSizeBytes = 3565158L,
-            tags = "Microbiology, Sterilization, Autoclave, LabManual",
-            status = ResourceStatus.PENDING_REVIEW,
-            uploaderId = "usr_student_01",
-            uploaderEmail = "rishi.pandit@pharmahub.edu",
-            description = "Detailed procedure for biological indicator spore strips (Bacillus stearothermophilus) and D-value determination."
-        ),
-        ResourceEntity(
-            id = "res_pending_02",
-            title = "Medicinal Chemistry-III: Nitrogen Mustards & Alkylating Agents SAR",
-            subject = "Medicinal Chemistry",
-            semester = 6,
-            course = "B.Pharm",
-            university = "National College of Pharmacy",
-            author = "Aarav Sharma",
-            uploadDate = "45 mins ago",
-            fileType = "DOCX",
-            fileSize = "2.1 MB",
-            fileSizeBytes = 2202009L,
-            tags = "Anticancer, Alkylating, Mustards, SAR",
-            status = ResourceStatus.PENDING_REVIEW,
-            uploaderId = "usr_contributor_01",
-            uploaderEmail = "arvind.sharma@pharmahub.edu",
-            description = "Aziridinium ion formation and nucleophilic attack on N-7 guanine of DNA."
-        )
-    )
+    val samplePendingResources = emptyList<ResourceEntity>()
 
-    val sampleReports = listOf(
-        ResourceReportEntity(
-            id = "rep_01",
-            resourceId = "res_pk_01",
-            resourceTitle = "Pharmacokinetics: Volume of Distribution & Clearance Mastery",
-            reporterId = "usr_student_01",
-            reporterEmail = "rishi.pandit@pharmahub.edu",
-            reason = ReportReason.INCORRECT_INFORMATION,
-            details = "On page 4, equation 2 has a missing minus sign on elimination constant Kel (-Kel * t).",
-            status = ReportStatus.OPEN
-        )
-    )
+    val sampleReports = emptyList<ResourceReportEntity>()
 
-    val sampleAuditLogs = listOf(
-        AuditLogEntity(
-            actorId = "usr_superadmin",
-            actorEmail = "admin@pharmahub.edu",
-            actorRole = "SUPER_ADMIN",
-            action = "APPROVE_RESOURCE",
-            targetId = "res_pyq_03",
-            targetType = "RESOURCE",
-            result = "SUCCESS",
-            details = "Approved GPAT 2024 & 2025 Solved Paper following copyright verification."
-        ),
-        AuditLogEntity(
-            actorId = "usr_superadmin",
-            actorEmail = "admin@pharmahub.edu",
-            actorRole = "SUPER_ADMIN",
-            action = "SYSTEM_SETTINGS_UPDATE",
-            targetId = "global_settings",
-            targetType = "SYSTEM",
-            result = "SUCCESS",
-            details = "Updated max upload size to 50MB and enabled AI study tutor."
-        )
-    )
+    val sampleAuditLogs = emptyList<AuditLogEntity>()
 
     val sampleSystemSettings = AppSystemSettingsEntity(
         id = "global_settings",

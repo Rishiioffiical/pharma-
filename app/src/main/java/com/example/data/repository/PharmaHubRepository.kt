@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import com.example.BuildConfig
 import com.example.data.local.InitialPharmaData
 import com.example.data.local.PharmaHubDao
 import com.example.data.model.*
@@ -20,53 +21,62 @@ class PharmaHubRepository(
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
     val currentUser: StateFlow<UserEntity?> = _currentUser.asStateFlow()
 
+    fun isSuperAdmin(email: String): Boolean {
+        val configuredAdmin = BuildConfig.PRIMARY_ADMIN_EMAIL.trim().lowercase()
+        return configuredAdmin.isNotEmpty() && email.trim().lowercase() == configuredAdmin
+    }
+
     suspend fun seedDatabaseIfEmpty() {
         val existingResources = dao.getAllResources().firstOrNull()
         if (existingResources.isNullOrEmpty()) {
-            dao.insertUsers(InitialPharmaData.sampleUsers)
             dao.insertResources(InitialPharmaData.sampleResources)
-            dao.insertResources(InitialPharmaData.samplePendingResources)
-            dao.insertReports(InitialPharmaData.sampleReports)
-            dao.insertAuditLogs(InitialPharmaData.sampleAuditLogs)
             dao.insertSystemSettings(InitialPharmaData.sampleSystemSettings)
             dao.insertDrugs(InitialPharmaData.sampleDrugs)
-            dao.insertDecks(InitialPharmaData.sampleDecks)
-            dao.insertFlashcards(InitialPharmaData.sampleCards)
-            dao.insertQuizzes(InitialPharmaData.sampleQuizzes)
-            dao.insertQuizQuestions(InitialPharmaData.sampleQuizQuestions)
-            dao.insertPosts(InitialPharmaData.samplePosts)
-            dao.insertChatMessages(InitialPharmaData.sampleChatMessages)
-            dao.updateAnalytics(InitialPharmaData.sampleAnalytics)
         }
 
-        // Auto-initialize default student session if not yet signed in
+        // Restore previously signed in user session if active
         if (_currentUser.value == null) {
-            val defaultStudent = dao.getUserByEmail("rishi.pandit@pharmahub.edu")
-                ?: dao.getAllUsers().firstOrNull()?.firstOrNull()
-            _currentUser.value = defaultStudent
+            val lastActiveUser = dao.getAllUsers().firstOrNull()?.maxByOrNull { it.lastLoginAt }
+            if (lastActiveUser != null && lastActiveUser.status == UserAccountStatus.ACTIVE) {
+                // Ensure admin role is verified
+                val verifiedUser = if (isSuperAdmin(lastActiveUser.email) && lastActiveUser.role != UserRole.SUPER_ADMIN) {
+                    lastActiveUser.copy(role = UserRole.SUPER_ADMIN).also { dao.insertUser(it) }
+                } else {
+                    lastActiveUser
+                }
+                _currentUser.value = verifiedUser
+            }
         }
     }
 
     // --- Authentication & Session Management ---
 
     suspend fun signIn(email: String, role: UserRole? = null): Result<UserEntity> {
-        val user = dao.getUserByEmail(email.trim().lowercase())
+        val cleanEmail = email.trim().lowercase()
+        val isPrimaryAdmin = isSuperAdmin(cleanEmail)
+        val determinedRole = if (isPrimaryAdmin) UserRole.SUPER_ADMIN else (role ?: UserRole.STUDENT)
+
+        val user = dao.getUserByEmail(cleanEmail)
             ?: UserEntity(
                 id = "usr_${UUID.randomUUID().toString().take(8)}",
-                email = email.trim().lowercase(),
-                displayName = email.substringBefore("@").replace(".", " ").replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() },
-                role = role ?: UserRole.STUDENT,
+                email = cleanEmail,
+                displayName = cleanEmail.substringBefore("@").replace(".", " ").replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() },
+                role = determinedRole,
                 status = UserAccountStatus.ACTIVE
             ).also { dao.insertUser(it) }
 
         if (user.status == UserAccountStatus.BANNED) {
-            return Result.failure(IllegalStateException("This account has been permanently banned for terms violation."))
+            return Result.failure(IllegalStateException("This account has been permanently suspended."))
         }
         if (user.status == UserAccountStatus.SUSPENDED) {
-            return Result.failure(IllegalStateException("This account is temporarily suspended. Contact campus admin."))
+            return Result.failure(IllegalStateException("This account is temporarily suspended."))
         }
 
-        val updated = user.copy(lastLoginAt = System.currentTimeMillis())
+        val updated = if (isPrimaryAdmin && user.role != UserRole.SUPER_ADMIN) {
+            user.copy(role = UserRole.SUPER_ADMIN, lastLoginAt = System.currentTimeMillis())
+        } else {
+            user.copy(lastLoginAt = System.currentTimeMillis())
+        }
         dao.insertUser(updated)
         _currentUser.value = updated
 
@@ -75,7 +85,7 @@ class PharmaHubRepository(
             targetId = updated.id,
             targetType = "USER",
             result = "SUCCESS",
-            details = "User signed in as ${updated.role.name}"
+            details = "User signed in"
         )
         return Result.success(updated)
     }
@@ -88,16 +98,20 @@ class PharmaHubRepository(
         university: String,
         requestedRole: UserRole = UserRole.STUDENT
     ): Result<UserEntity> {
-        val existing = dao.getUserByEmail(email.trim().lowercase())
+        val cleanEmail = email.trim().lowercase()
+        val existing = dao.getUserByEmail(cleanEmail)
         if (existing != null) {
             return Result.failure(IllegalArgumentException("An account with this email already exists."))
         }
 
+        val isPrimaryAdmin = isSuperAdmin(cleanEmail)
+        val finalRole = if (isPrimaryAdmin) UserRole.SUPER_ADMIN else requestedRole
+
         val newUser = UserEntity(
             id = "usr_${UUID.randomUUID().toString().take(8)}",
-            email = email.trim().lowercase(),
+            email = cleanEmail,
             displayName = name.trim(),
-            role = requestedRole,
+            role = finalRole,
             status = UserAccountStatus.ACTIVE,
             course = course,
             semester = semester,
@@ -113,7 +127,7 @@ class PharmaHubRepository(
             targetId = newUser.id,
             targetType = "USER",
             result = "SUCCESS",
-            details = "New registration for ${newUser.displayName} (${newUser.course})"
+            details = "New registration for ${newUser.displayName}"
         )
         return Result.success(newUser)
     }

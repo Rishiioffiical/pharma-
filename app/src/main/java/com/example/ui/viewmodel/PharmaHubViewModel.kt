@@ -558,9 +558,38 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
     )
     val aiMessages: StateFlow<List<AiChatMessage>> = _aiMessages.asStateFlow()
     var isAiGenerating = MutableStateFlow(false)
+    private val _aiError = MutableStateFlow<String?>(null)
+    val aiError: StateFlow<String?> = _aiError.asStateFlow()
+    private var lastPrompt: String? = null
+    private var lastSubjectContext: String = "Pharmacology"
+
+    fun clearAiChat() {
+        _aiMessages.value = listOf(
+            AiChatMessage(
+                id = "ai_welcome",
+                isUser = false,
+                text = "Chat cleared. Hello! I am PharmaHub AI, your clinical pharmacology and pharmacy education tutor. Ask me to explain drug mechanisms, clarify pharmacokinetics equations, or summarize lecture notes.",
+                citations = listOf("Goodman & Gilman's Pharmacological Basis of Therapeutics (14th Ed.)"),
+                keyPoints = listOf(
+                    "All consultations include textbook references.",
+                    "Strictly educational – does not provide personal medical advice."
+                )
+            )
+        )
+        _aiError.value = null
+    }
+
+    fun retryLastAiPrompt() {
+        val prompt = lastPrompt ?: return
+        sendAiPrompt(prompt, lastSubjectContext)
+    }
 
     fun sendAiPrompt(prompt: String, subjectContext: String = "Pharmacology") {
         if (prompt.isBlank() || isAiGenerating.value) return
+
+        lastPrompt = prompt
+        lastSubjectContext = subjectContext
+        _aiError.value = null
 
         val userMsg = AiChatMessage(
             id = "user_${System.currentTimeMillis()}",
@@ -571,17 +600,23 @@ class PharmaHubViewModel(application: Application) : AndroidViewModel(applicatio
         isAiGenerating.value = true
 
         viewModelScope.launch {
-            val response: AiStudyResponse = aiService.consultAiAssistant(prompt, subjectContext)
-            val assistantMsg = AiChatMessage(
-                id = "ai_${System.currentTimeMillis()}",
-                isUser = false,
-                text = response.explanation,
-                citations = response.highYieldCitations,
-                keyPoints = response.keyPoints
-            )
-            _aiMessages.value = _aiMessages.value + assistantMsg
-            isAiGenerating.value = false
-            repository.addStudySession(minutes = 10, xpEarned = 25)
+            try {
+                val response: AiStudyResponse = aiService.consultAiAssistant(prompt, subjectContext)
+                val assistantMsg = AiChatMessage(
+                    id = "ai_${System.currentTimeMillis()}",
+                    isUser = false,
+                    text = response.explanation,
+                    citations = response.highYieldCitations,
+                    keyPoints = response.keyPoints
+                )
+                _aiMessages.value = _aiMessages.value + assistantMsg
+                _aiError.value = null
+                repository.addStudySession(minutes = 10, xpEarned = 25)
+            } catch (e: Exception) {
+                _aiError.value = "Failed to consult AI tutor: ${e.localizedMessage ?: "Network interruption"}. Tap to retry."
+            } finally {
+                isAiGenerating.value = false
+            }
         }
     }
 }

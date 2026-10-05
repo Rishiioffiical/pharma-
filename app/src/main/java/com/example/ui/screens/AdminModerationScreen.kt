@@ -96,14 +96,14 @@ fun AdminModerationScreen(
 
                         Button(
                             onClick = {
-                                viewModel.signIn("admin@pharmahub.edu", UserRole.SUPER_ADMIN)
+                                viewModel.navigateTo(AppScreen.AUTH)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.testTag("admin_login_bypass_button")
+                            modifier = Modifier.testTag("admin_login_auth_button")
                         ) {
-                            Icon(imageVector = Icons.Default.AdminPanelSettings, contentDescription = null)
+                            Icon(imageVector = Icons.Default.Lock, contentDescription = null)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Sign In as Admin")
+                            Text("Sign In")
                         }
                     }
                 }
