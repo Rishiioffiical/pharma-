@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account information and academic profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User full name" },
+        "role": { "type": "string", "description": "Role such as STUDENT, FACULTY, ADMIN, SUPER_ADMIN" },
+        "status": { "type": "string", "description": "Account status (ACTIVE, SUSPENDED, BANNED)" },
+        "course": { "type": "string", "description": "Enrolled pharmacy program" },
+        "semester": { "type": "integer", "description": "Academic semester" },
+        "university": { "type": "string", "description": "University or institution name" },
+        "createdAt": { "type": "integer", "description": "Creation timestamp epoch ms" },
+        "lastLoginAt": { "type": "integer", "description": "Last login timestamp epoch ms" }
+      },
+      "required": ["id", "email", "displayName", "role", "status"]
+    },
+    "Resource": {
+      "title": "Resource",
+      "description": "Academic study materials and documents metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique resource document ID" },
+        "title": { "type": "string", "description": "Resource title" },
+        "subject": { "type": "string", "description": "Pharmacy subject" },
+        "semester": { "type": "integer", "description": "Semester number" },
+        "course": { "type": "string", "description": "Course name" },
+        "fileType": { "type": "string", "description": "File extension" },
+        "fileSize": { "type": "string", "description": "Formatted file size" },
+        "tags": { "type": "string", "description": "Comma-separated search tags" },
+        "description": { "type": "string", "description": "Resource synopsis" },
+        "downloadUrl": { "type": "string", "description": "Remote download or storage URL" },
+        "storagePath": { "type": "string", "description": "Storage bucket path" },
+        "status": { "type": "string", "description": "Status (PENDING_MODERATION, APPROVED, REJECTED, DRAFT)" },
+        "uploaderId": { "type": "string", "description": "Uploader Firebase Auth UID" },
+        "uploaderEmail": { "type": "string", "description": "Uploader email address" },
+        "rejectionReason": { "type": "string", "description": "Reason if rejected by moderator" },
+        "moderatorNotes": { "type": "string", "description": "Moderator internal comments" },
+        "downloads": { "type": "integer", "description": "Total download counter" },
+        "views": { "type": "integer", "description": "Total view counter" },
+        "createdAt": { "type": "integer", "description": "Upload timestamp epoch ms" }
+      },
+      "required": ["id", "title", "subject", "fileType", "status", "uploaderId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection partitioned by Firebase UID"
+    },
+    "/resources/{resourceId}": {
+      "schema": "Resource",
+      "description": "Academic library resources metadata catalog"
+    }
+  }
+}

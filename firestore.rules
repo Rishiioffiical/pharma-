@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'ADMIN' || 
+         request.auth.token.role == 'SUPER_ADMIN' ||
+         request.auth.token.admin == true);
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // --- Resources Collection ---
+    match /resources/{resourceId} {
+      allow read: if isAuthenticated() && (
+        resource.data.status == 'APPROVED' || 
+        resource.data.uploaderId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      allow create: if isAuthenticated() && (
+        (request.resource.data.uploaderId == request.auth.uid && request.resource.data.status == 'PENDING_MODERATION') ||
+        isAdmin()
+      );
+
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.uploaderId == request.auth.uid && 
+         resource.data.status == 'PENDING_MODERATION' &&
+         request.resource.data.status == 'PENDING_MODERATION')
+      );
+
+      allow delete: if isAdmin();
+    }
+  }
+}
